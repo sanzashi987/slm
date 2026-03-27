@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(E:/code/llm/CLAUDE.md:*)"
+      "Bash(E:/code/llm/CLAUDE.md:*)",
+      "Bash(python -c \"import sys, json; nb = json.load\\(sys.stdin\\); print\\(f''''Total cells: {len\\(nb[\"\"cells\"\"]\\)}''''\\); [print\\(f''''Cell {i}: {c[\"\"source\"\"][0][:80] if c[\"\"source\"\"] else \"\"empty\"\"}...''''\\) for i, c in enumerate\\(nb[''''cells''''][:10]\\)]\")"
     ]
   }
 }
