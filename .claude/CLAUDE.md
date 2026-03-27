@@ -26,24 +26,8 @@ Uses `uv` package manager:
 
 Each notebook builds upon previous concepts. Current and planned components:
 
-1. **Autograd System** (`grad.ipynb`) - Current
-2. **Backpropagation** - Planned
-3. **Activation Functions** (tanh, ReLU, sigmoid) - Planned
-4. **Neural Network Layers** - Planned
-5. **Loss Functions** (MSE, cross-entropy) - Planned
-6. **Optimizers** (SGD variants) - Planned
-7. **Tokenization** - Planned
-8. **Transformer Architecture** - Planned
-9. **Training Pipeline** - Planned
+1. **Autograd System & Backpropagation** (`grad.ipynb`) - Current
 
-### Current: Autograd System
-
-**Value Class** - Node in computational graph:
-- `data`: Numeric value
-- `grad`: Gradient for backpropagation
-- `_prev`: Parent Value objects (computation history)
-- `_op`: Operation ("+", "*")
-- `label`: Visualization name
 
 **Operations**: Addition and multiplication
 
