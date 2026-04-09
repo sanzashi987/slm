@@ -55,9 +55,11 @@ class SelfAttention(nn.Module):
         att = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5  # (B, n_head, T, T)
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
         att = F.softmax(att, dim=-1)
-        y = att @ v  # (B, n_head, T, head_size)
+        # (B, n_head, T, T) x (B, n_head, T, head_size) = (B, n_head, T, head_size)
+        y = att @ v
         y = y.transpose(1, 2)  # (B, T, n_head , head_size)
         y = y.contiguous().view(B, T, C)  # (B, T, n_embd)   n_embd = n_head * head_size
+        # output projection
         y = self.c_proj(y)
         return y
 
@@ -193,6 +195,12 @@ class GPT(nn.Module):
 
 # ----#
 
+device = "cpu"
+if torch.cuda.is_available():
+    device = "cuda"
+elif hasattr(torch.backends, "mps") and torch.mps.is_available():
+    device = "mps"
+
 
 num_return_sequences = 5
 max_length = 39
@@ -210,9 +218,10 @@ max_length = 39
 # )
 
 
-model = GPT.from_pretrained("gpt2")
+# model = GPT.from_pretrained("gpt2")
+model = GPT(GPTConfig())
 model.eval()  # evaluation mode, instead of training mode (performing dropout, BatchNorm  etc in some models)
-model.to("cuda")
+model.to(device)
 
 #
 import tiktoken
@@ -221,7 +230,7 @@ enc = tiktoken.get_encoding("gpt2")
 tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long)  # (8)
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)  # (5,8)
-x = tokens.to("cuda")
+x = tokens.to(device)
 
 
 torch.manual_seed(42)
@@ -248,4 +257,4 @@ while x.size(1) < max_length:
 for i in range(num_return_sequences):
     tokens = x[i, :max_length].tolist()
     decoded = enc.decode(tokens=tokens)
-    print(">>>", decoded, "\n")
+    print(">>>", decoded)
