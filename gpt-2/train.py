@@ -276,12 +276,14 @@ class GPT(nn.Module):
 
 # ----#
 
+torch.manual_seed(1337)
 device = "cpu"
 if torch.cuda.is_available():
+    torch.cuda.manual_seed(1337)
     device = "cuda"
 elif hasattr(torch.backends, "mps") and torch.mps.is_available():
+    torch.mps.manual_seed(1337)
     device = "mps"
-
 
 num_return_sequences = 5
 max_length = 39
