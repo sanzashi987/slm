@@ -21,6 +21,7 @@ class SelfAttention(nn.Module):
         # q,k,v linear matrix all in one
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
         self.c_proj = nn.Linear(config.n_embd, config.n_embd)
+        self.c_proj.RES_CONNECT = 1
 
         self.n_head = config.n_head
         # q,k,v will be a four-dimensional tensor, so the low triangle matrix
@@ -70,6 +71,7 @@ class MLP(nn.Module):
         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd)
         self.gelu = nn.GELU(approximate="tanh")  # difference to  Relu
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd)
+        self.c_proj.RES_CONNECT = 1
 
     def forward(self, x: torch.Tensor):
         x = self.c_fc(x)
@@ -92,6 +94,22 @@ class Layer(nn.Module):
         return x
 
 
+# 证明: 残差链接的方差通过加法累积
+def deviation_grows():
+    x = torch.zeros(768)
+    n = 100
+    for i in range(n):
+        x += torch.randn(768) * n**-0.5
+    print("deviation controlled:", x.std())
+    x = torch.zeros(768)
+    for i in range(n):
+        x += torch.randn(768)
+    print("deviation blows:", x.std())
+
+
+deviation_grows()
+
+
 class GPT(nn.Module):
     def __init__(self, config: GPTConfig):
         super().__init__()
@@ -106,6 +124,62 @@ class GPT(nn.Module):
         )
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+        # 权重共享（Weight Tying）：lm_head 和 wte 共享同一个 tensor
+        #
+        # wte      的形状：[vocab_size, n_embd]
+        # lm_head  的形状：[vocab_size, n_embd]
+        #
+        # 两者形状相同，但职责方向相反：
+        #   wte:     token_index → 向量  （把 token 编码成语义向量）
+        #   lm_head: 向量 → logits       （把输出向量映射回词表得分）
+        #
+        # lm_head 的本质是矩阵点积：
+        #   logits = x @ wte.weight.T
+        #   即：用输出向量 x 和词表里每个 token 的 embedding 做相似度计算
+        #   x 和 token 47 的 embedding 越相似 → token 47 的 logits 越高
+        #
+        # 因此两者学的是同一件事：
+        #   "token 47 的语义向量是什么"
+        #   这个向量既是 token 47 的输入表示（wte），
+        #   也是输出时判断"当前向量最像哪个 token"的基准（lm_head）
+        #
+        # 共享的不是输出结果，而是对每个 token 语义的理解
+        #
+        # 额外好处：节省参数
+        #   vocab_size=50257, n_embd=768 → 省去约 3800 万个参数
+        self.transformer.wte.weight = self.lm_head.weight
+
+        # the apply method from Module, to iterate all pytorch nn modules
+        self.apply(self._init_weights)
+
+    # 权重初始化：用均值0、标准差0.02的正态分布填充权重
+    # 目的是给训练一个稳定的起点，避免初始数值太大导致梯度爆炸
+    # 训练开始后梯度会自动调整权重，初始化只管第一步不崩
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            std = 0.02
+            # c_proj（每个残差分支的最后一层）使用更小的std
+            # 原因：残差连接会累积方差
+            #   每次残差加法：x = x + c_proj(output)
+            #   每个Block有attn和ffn两次残差，N层Block后累积2N次
+            #   方差累积：Var(x) = Var(x₀) + 2N × σ²
+            #
+            # 解决方案：让c_proj初始化更小，抵消层数带来的方差累积
+            #   目标：2N × σ² ≈ 常数
+            #   推导：σ ∝ 1/sqrt(2N)
+            #   结果：std = 0.02 / sqrt(2 * n_layer)
+            #
+            # 例如12层Block：std = 0.02 / sqrt(24) ≈ 0.004
+            # c_proj加入残差流的量只有普通层的1/5，24次累积后方差保持稳定
+            if hasattr(module, "RES_CONNECT"):
+                # 有个2 因为, 每个Block都会做 2次 残差链接  Attention & Mlp
+                std *= (2 * self.config.n_layer) ** -0.5
+            torch.nn.init.normal_(module.weight, mean=0.0, std=std)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx: Tensor, target: Tensor = None):
         B, T = idx.shape
@@ -277,7 +351,7 @@ class DataLoaderLite:
         y = buf[1:].view(B, T)
         self.current_position += B * T
 
-        if self.current_position + B * T + 1 > token_length:
+        if self.current_position + B * T + 1 > self.token_length:
             self.current_position = 0
         return x, y
 
