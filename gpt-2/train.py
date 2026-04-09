@@ -240,19 +240,59 @@ tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)  # (5,8)
 x = tokens.to(device)
 
 
-def create_samples(B: int = 4, T: int = 32):
-    enc = tiktoken.get_encoding("gpt2")
-    with open("input.txt", "r", encoding="utf-8") as f:
-        text = f.read()
-    data = text[:1000]  # first 1,000 characters
-    # print(data[:100])
-    tokens = enc.encode(data)
-    buf = torch.tensor(tokens[: B * T + 1])
-    x = buf[:-1].view(B, T)
-    y = buf[1:].view(B, T)
-    print(x)
-    print(y)
-    return x, y
+# def create_samples(B: int = 4, T: int = 32):
+#     enc = tiktoken.get_encoding("gpt2")
+#     with open("input.txt", "r", encoding="utf-8") as f:
+#         text = f.read()
+#     data = text[:1000]  # first 1,000 characters
+#     # print(data[:100])
+#     tokens = enc.encode(data)
+#     buf = torch.tensor(tokens[: B * T + 1])
+#     x = buf[:-1].view(B, T)
+#     y = buf[1:].view(B, T)
+#     print(x)
+#     print(y)
+#     return x, y
+
+
+class DataLoaderLite:
+    def __init__(self, B: int, T: int):
+        self.B = B
+        self.T = T
+        with open("input.txt", "r", encoding="utf-8") as f:
+            text = f.read()
+        enc = tiktoken.get_encoding("gpt2")
+        tokens = enc.encode(text)
+        self.tokens = torch.tensor(tokens)
+
+        self.token_length = len(self.tokens)
+        print(f"loaded {self.token_length} tokens")
+        print(f"1 epoch  = {self.tokens // (B *T)} batches")
+        self.current_position = 0
+
+    def next_batch(self):
+        B, T = self.B, self.T
+        buf = self.tokens[self.current_position : self.current_position + B * T + 1]
+        x = buf[:-1].view(B, T)
+        y = buf[1:].view(B, T)
+        self.current_position += B * T
+
+        if self.current_position + B * T + 1 > token_length:
+            self.current_position = 0
+        return x, y
+
+
+train_loader = DataLoaderLite(4, 32)
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+for i in range(50):
+    x, y = train_loader.next_batch()
+    x, y = x.to(device), y.to(device)
+    optimizer.zero_grad()
+    _, loss = model(x, y)
+    loss.backward()
+    optimizer.step()
+    print(f"step={i}, loss={loss.item()}")
 
 
 import sys
