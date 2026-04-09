@@ -107,7 +107,7 @@ class GPT(nn.Module):
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
-    def forward(self, idx: Tensor):
+    def forward(self, idx: Tensor, target: Tensor = None):
         B, T = idx.shape
         assert T <= self.config.block_size
 
@@ -118,8 +118,15 @@ class GPT(nn.Module):
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
-        logits = self.lm_head(x)
-        return logits
+        logits: Tensor = self.lm_head(x)  # [B, T, vocab_size]
+
+        loss = None
+        if target is not None:
+            # logits: [B, T, vocab_size] → [B*T, vocab_size]，F.cross_entropy要求2维输入
+            # target: [B, T] → [B*T]，和logits第一维对齐
+            loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), target.view(-1))
+
+        return logits, loss
 
     @classmethod
     def from_pretrained(cls, model_type):
@@ -231,6 +238,26 @@ tokens = enc.encode("Hello, I'm a language model,")
 tokens = torch.tensor(tokens, dtype=torch.long)  # (8)
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)  # (5,8)
 x = tokens.to(device)
+
+
+def create_samples(B: int = 4, T: int = 32):
+    enc = tiktoken.get_encoding("gpt2")
+    with open("input.txt", "r", encoding="utf-8") as f:
+        text = f.read()
+    data = text[:1000]  # first 1,000 characters
+    # print(data[:100])
+    tokens = enc.encode(data)
+    buf = torch.tensor(tokens[: B * T + 1])
+    x = buf[:-1].view(B, T)
+    y = buf[1:].view(B, T)
+    print(x)
+    print(y)
+    return x, y
+
+
+import sys
+
+sys.exit(0)
 
 
 torch.manual_seed(42)
