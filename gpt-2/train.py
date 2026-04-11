@@ -107,7 +107,7 @@ def deviation_grows():
     print("deviation blows:", x.std())
 
 
-deviation_grows()
+# deviation_grows()
 
 
 class GPT(nn.Module):
@@ -303,8 +303,11 @@ max_length = 39
 
 # model = GPT.from_pretrained("gpt2")
 model = GPT(GPTConfig())
-model.eval()  # evaluation mode, instead of training mode (performing dropout, BatchNorm  etc in some models)
-model.to(device)
+# model.eval()  # evaluation mode, instead of training mode (performing dropout, BatchNorm  etc in some models)
+model.to(device) # model to device will mutate the instance itself
+# Triton是torch.compile的依赖，用来在GPU上生成优化的kernel。
+# 但是windows 支持很差, 考虑再 Linux 或者 wsl 上运行
+# model = torch.compile(model)
 
 #
 import tiktoken
@@ -378,7 +381,7 @@ for i in range(50):
 
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
         _, loss = model(x, y)
-        import code
+        # import code
 
         # code.interact(local=locals()) # 类似debugger
 
