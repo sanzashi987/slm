@@ -53,11 +53,30 @@ class SelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, head_size).transpose(
             1, 2
         )  # (B, n_head, T, head_size)
-        att = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5  # (B, n_head, T, T)
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
-        # (B, n_head, T, T) x (B, n_head, T, head_size) = (B, n_head, T, head_size)
-        y = att @ v
+
+        # att = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5  # (B, n_head, T, T)
+        # att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
+        # att = F.softmax(att, dim=-1)
+        # # (B, n_head, T, T) x (B, n_head, T, head_size) = (B, n_head, T, head_size)
+        # y = att @ v
+
+        # Flash Attention vs 传统Attention的区别：
+        #
+        # 传统Attention：
+        #   attn_weights = q @ k.T   # [T, T]矩阵写入显存
+        #   attn_weights = softmax(attn_weights)  # 从显存读回，计算，再写入显存
+        #   y = attn_weights @ v     # 再从显存读回
+        #   → [T, T]矩阵反复读写显存，T=1024时矩阵极大，内存带宽成为瓶颈
+        #
+        # Flash Attention：
+        #   将[T, T]矩阵分块，每次只处理一小块
+        #   在GPU片上SRAM（速度极快）里完成计算，不写回显存
+        #   利用online softmax技巧，分块计算时不需要看到完整[T, T]矩阵
+        #   只把最终结果y写回显存
+        #   → 显存读写次数从O(T²)降到O(T)，数学结果完全等价，但速度大幅提升
+        #   https://zhuanlan.zhihu.com/p/4264163756
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+
         y = y.transpose(1, 2)  # (B, T, n_head , head_size)
         y = y.contiguous().view(B, T, C)  # (B, T, n_embd)   n_embd = n_head * head_size
         # output projection
@@ -304,7 +323,7 @@ max_length = 39
 # model = GPT.from_pretrained("gpt2")
 model = GPT(GPTConfig())
 # model.eval()  # evaluation mode, instead of training mode (performing dropout, BatchNorm  etc in some models)
-model.to(device) # model to device will mutate the instance itself
+model.to(device)  # model to device will mutate the instance itself
 # Triton是torch.compile的依赖，用来在GPU上生成优化的kernel。
 # 但是windows 支持很差, 考虑再 Linux 或者 wsl 上运行
 # model = torch.compile(model)
