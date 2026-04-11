@@ -321,7 +321,15 @@ max_length = 39
 
 
 # model = GPT.from_pretrained("gpt2")
-model = GPT(GPTConfig())
+
+# given a number that can be N power of 2 instead of a odd number /prime number  50257
+# 对齐到128的倍数, 在GPU中更容易分片
+#
+# 风险：多出的47个token（50257~50303）不存在于词表里
+# 但训练数据里从不出现这些index，对应权重会被训练成得分极低
+# 实践中模型几乎不会采样到这些padding token，风险可忽略
+
+model = GPT(GPTConfig(vocab_size=50304))
 # model.eval()  # evaluation mode, instead of training mode (performing dropout, BatchNorm  etc in some models)
 model.to(device)  # model to device will mutate the instance itself
 # Triton是torch.compile的依赖，用来在GPU上生成优化的kernel。
