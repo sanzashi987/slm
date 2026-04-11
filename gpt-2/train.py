@@ -358,17 +358,38 @@ class DataLoaderLite:
         return x, y
 
 
-train_loader = DataLoaderLite(4, 32)
+train_loader = DataLoaderLite(B=16, T=1024)
+import time
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+
+# 设置float32矩阵乘法的精度模式
+# 'high' = 使用TF32格式，牺牲部分尾数精度（23位→10位）换取约8倍乘法速度提升
+# 对训练结果影响极小，因为梯度本身就是近似值
+# 仅在Nvidia Ampere架构及以上（A100、3090等）有效
+# 理论上TF32能提升8倍算力，但GPU做矩阵乘法的瓶颈不只是计算速度，还有把数据从显存搬到计算单元的速度
+# 数据底层还是完整的32bit长度, 数据还没搬完计算单元就在等，所以实际只能看到约3倍提升。
+torch.set_float32_matmul_precision("high")
 for i in range(50):
+    t0 = time.time()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
-    _, loss = model(x, y)
+
+    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+        _, loss = model(x, y)
+        import code
+
+        # code.interact(local=locals()) # 类似debugger
+
     loss.backward()
     optimizer.step()
-    print(f"step={i}, loss={loss.item()}")
+
+    torch.cuda.synchronize()  # await gpu
+    t1 = time.time()
+    dt = (t1 - t0) * 1000
+    tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
+    print(f"step={i}, loss={loss.item()}, dt={dt}ms, tok/sec={tokens_per_sec}")
 
 
 import sys
