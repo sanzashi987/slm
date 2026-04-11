@@ -391,7 +391,9 @@ class DataLoaderLite:
 train_loader = DataLoaderLite(B=16, T=1024)
 import time
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+# according to the GPT-3 paper the param for the adam optimizer is 0.9, 0.95, e=10e-8
+optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), eps=1e-18, lr=3e-4)
 
 # 设置float32矩阵乘法的精度模式
 # 'high' = 使用TF32格式，牺牲部分尾数精度（23位→10位）换取约8倍乘法速度提升
@@ -413,13 +415,19 @@ for i in range(50):
         # code.interact(local=locals()) # 类似debugger
 
     loss.backward()
+    # 伪代码
+    # grad_norm = sqrt(Σ(grad²)), 类似 c_proj 的初始化, 在运行过程中做梯度裁剪, 防止梯度爆炸
+    # 超过 max_norm 时执所有梯度的等比缩小, GPT-3 max_norm=1.0
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     optimizer.step()
 
     torch.cuda.synchronize()  # await gpu
     t1 = time.time()
     dt = (t1 - t0) * 1000
     tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
-    print(f"step={i}, loss={loss.item()}, dt={dt}ms, tok/sec={tokens_per_sec}")
+    print(
+        f"step={i:4d} | loss={loss.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
+    )
 
 
 import sys
