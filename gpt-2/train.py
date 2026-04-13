@@ -390,6 +390,35 @@ class DataLoaderLite:
 
 train_loader = DataLoaderLite(B=16, T=1024)
 import time
+import math
+
+
+max_lr = 3e-4
+min_lr = max_lr * 0.1
+warmup_steps = 10
+max_steps = 50
+
+
+def get_lr(it: int):
+    # 开始：warmup，线性从0增加到max_lr
+    # 训练开始时权重是随机的，梯度方向不可信，用大学习率会把权重推到很奇怪的地方。先用小学习率热身，等梯度方向稳定了再加大。
+    if it < warmup_steps:
+        return max_lr * (it + 1) / warmup_steps
+    # 训练后期：cosine decay，从max_lr慢慢降到min_lr
+    # 训练后期模型已经接近最优，大学习率会在最优点附近反复震荡收敛不了，慢慢降低学习率让模型稳定落在最优点。
+    if it > max_steps:
+        return min_lr
+
+    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
+    assert 0 <= decay_ratio <= 1
+    # 1.0 ---> 0
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    # 训练中期：学习率到达max_lr
+    # → 梯度方向已经稳定，知道该往哪走
+    # → 大学习率，走得快，加速收敛
+    # max_lr ---> min_lr
+    return min_lr + coeff * (max_lr - min_lr)
+
 
 # optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 # according to the GPT-3 paper the param for the adam optimizer is 0.9, 0.95, e=10e-8
@@ -402,7 +431,7 @@ optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), eps=1e-18, 
 # 理论上TF32能提升8倍算力，但GPU做矩阵乘法的瓶颈不只是计算速度，还有把数据从显存搬到计算单元的速度
 # 数据底层还是完整的32bit长度, 数据还没搬完计算单元就在等，所以实际只能看到约3倍提升。
 torch.set_float32_matmul_precision("high")
-for i in range(50):
+for step in range(50):
     t0 = time.time()
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
@@ -419,6 +448,10 @@ for i in range(50):
     # grad_norm = sqrt(Σ(grad²)), 类似 c_proj 的初始化, 在运行过程中做梯度裁剪, 防止梯度爆炸
     # 超过 max_norm 时执所有梯度的等比缩小, GPT-3 max_norm=1.0
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    lr = get_lr(step)
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
+
     optimizer.step()
 
     torch.cuda.synchronize()  # await gpu
@@ -426,7 +459,7 @@ for i in range(50):
     dt = (t1 - t0) * 1000
     tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
     print(
-        f"step={i:4d} | loss={loss.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
+        f"step={step:4d} | loss={loss.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
     )
 
 
@@ -456,7 +489,7 @@ while x.size(1) < max_length:
         x = torch.cat((x, xcol), dim=1)
 
 
-for i in range(num_return_sequences):
-    tokens = x[i, :max_length].tolist()
+for step in range(num_return_sequences):
+    tokens = x[step, :max_length].tolist()
     decoded = enc.decode(tokens=tokens)
     print(">>>", decoded)
