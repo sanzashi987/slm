@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch
 from torch.nn import functional as F
 from torch import Tensor
+import inspect
 
 
 @dataclass
@@ -221,6 +222,37 @@ class GPT(nn.Module):
 
         return logits, loss
 
+    def configure_optimizer(
+        self, weight_decay: float, learning_rate: float, device: str
+    ):
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        # param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+
+        optim_groups = [
+            {"params": decay_params, "weight_decay": weight_decay},
+            {"params": nodecay_params, "weight_decay": 0.0},
+        ]
+
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device == "cuda"
+
+        # m = b1 * m + (1-b1) * grad      # 一阶矩：梯度的移动平均（方向）
+        # v = (1-b2) * v + (1-b2)* grad²   # 二阶矩：梯度平方的移动平均（幅度）
+        # w -= lr * m / sqrt(v) + (lr * weight_decay * w) # 梯度下降率
+        # weight decay的作用是惩罚权重过大，让权重保持小值防止过拟合
+        optimizer = torch.optim.AdamW(
+            optim_groups,
+            lr=learning_rate,
+            betas=(0.9, 0.95),
+            # 如果某个参数的梯度一直是0，v就会是0，导致除以零, 设置分母最小是1e-8，永远不会是0
+            eps=1e-8,
+            fused=use_fused,
+        )
+        return optimizer
+
     @classmethod
     def from_pretrained(cls, model_type):
         """Loads pretrained GPT-2 model weights from huggingface"""
@@ -422,7 +454,10 @@ def get_lr(it: int):
 
 # optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 # according to the GPT-3 paper the param for the adam optimizer is 0.9, 0.95, e=10e-8
-optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), eps=1e-18, lr=3e-4)
+# optimizer = torch.optim.AdamW(model.parameters(), betas=(0.9, 0.95), eps=1e-18, lr=3e-4)
+optimizer = model.configure_optimizer(
+    weight_decay=0.1, learning_rate=6e-4, device=device
+)
 
 # 设置float32矩阵乘法的精度模式
 # 'high' = 使用TF32格式，牺牲部分尾数精度（23位→10位）换取约8倍乘法速度提升
