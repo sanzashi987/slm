@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 import torch.nn as nn
 import torch
+import time
+import math
 from torch.nn import functional as F
 from torch import Tensor
 import inspect
@@ -433,10 +435,13 @@ class DataLoaderLite:
         return x, y
 
 
-train_loader = DataLoaderLite(B=16, T=1024)
-import time
-import math
-
+total_batch_size = 524288  # 2**19, ~ 0.5M , in number of tokens
+B = 16  # micro batch size
+T = 1024  # context size
+grad_accum_steps = total_batch_size // (B * T)
+train_loader = DataLoaderLite(B, T)
+print(f"total desired batch size: {total_batch_size}")
+print(f"=> calculated gradient accumulation steps: {grad_accum_steps}")
 
 max_lr = 3e-4
 min_lr = max_lr * 0.1
@@ -481,17 +486,30 @@ optimizer = model.configure_optimizer(
 torch.set_float32_matmul_precision("high")
 for step in range(50):
     t0 = time.time()
-    x, y = train_loader.next_batch()
-    x, y = x.to(device), y.to(device)
     optimizer.zero_grad()
+    loss_accum = 0.0  # for better printing format
+    # zero_grad 在外层清空, 所以循环内每次都会累加梯度, 是一种使用串行模拟 高batch数的计算方法
+    # 第1步backward后：param.grad = grad_1
+    # 第2步backward后：param.grad = grad_1 + grad_2
+    # 第3步backward后：param.grad = grad_1 + grad_2 + grad_3
+    # 第4步backward后：param.grad = grad_1 + grad_2 + grad_3 + grad_4
+    for micro_step in range(grad_accum_steps):
+        x, y = train_loader.next_batch()
+        x, y = x.to(device), y.to(device)
+        with torch.autocast(device_type=device, dtype=torch.bfloat16):
+            _, loss = model(x, y)
+            # import code
 
-    with torch.autocast(device_type=device, dtype=torch.bfloat16):
-        _, loss = model(x, y)
-        # import code
+            # code.interact(local=locals()) # 类似debugger
 
-        # code.interact(local=locals()) # 类似debugger
-
-    loss.backward()
+        # cross_entropy 默认使用平均数来计算 loss, 如果不修正则会导致循环数值累计
+        # 如 (L1 + L2) /2 + (L3 + L4) /2  != (L1 + L2 + L3 + L4) /4
+        # 修正: 额外除以循环次数 1/2*(L1 + L2) /2 + 1/2 *(L3 + L4) /2
+        # cross_entropy内部已经对batch内的样本取了平均，累积多步相当于把多个已经平均过的loss加再一起
+        # 如果loss不是取平均而是取sum，就不需要这个额外处理，直接累积就等价。但cross_entropy默认是mean，所以必须手动除以累积步数来抵消
+        loss = loss / grad_accum_steps
+        loss_accum += loss.detach()  # only get the value from tensor
+        loss.backward()
     # 伪代码
     # grad_norm = sqrt(Σ(grad²)), 类似 c_proj 的初始化, 在运行过程中做梯度裁剪, 防止梯度爆炸
     # 超过 max_norm 时执所有梯度的等比缩小, GPT-3 max_norm=1.0
@@ -505,7 +523,8 @@ for step in range(50):
     torch.cuda.synchronize()  # await gpu
     t1 = time.time()
     dt = (t1 - t0) * 1000
-    tokens_per_sec = (train_loader.B * train_loader.T) / (t1 - t0)
+    tokens_processed = train_loader.B * train_loader.T * grad_accum_steps
+    tokens_per_sec = tokens_processed / (t1 - t0)
     print(
-        f"step={step:4d} | loss={loss.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
+        f"step={step:4d} | loss={loss_accum.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
     )
