@@ -127,20 +127,6 @@ class FastMETRODecoderBlock(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────
-#  Projection MLP (dim reduction between stages)
-# ─────────────────────────────────────────────────────────
-
-class MLP(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, out_dim), nn.GELU(), nn.Linear(out_dim, out_dim))
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.net(x)
-
-
-# ─────────────────────────────────────────────────────────
 #  FastMETRO Hand Network
 # ─────────────────────────────────────────────────────────
 
