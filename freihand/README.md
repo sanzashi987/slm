@@ -94,21 +94,6 @@ python train_freihand.py \
     --save_every_n_epochs 10
 ```
 
-### 多卡训练 (HRNet-W64, 官方配置)
-
-```bash
-python -m torch.distributed.launch --nproc_per_node=4 \
-    train_freihand.py \
-    --data_root ./data/FreiHAND \
-    --mano_dir  ./models/mano \
-    --output_dir ./output/freihand_h64 \
-    --arch hrnet-w64 \
-    --model_name FastMETRO-L \
-    --per_gpu_train_batch_size 16 \
-    --num_train_epochs 200 \
-    --lr 1e-4
-```
-
 训练完成后会自动运行验证集推理，输出:
 - `output/freihand_*/pred.json`         ← FreiHAND 官方提交格式
 - `output/freihand_*/freihand_pred.zip` ← 直接上传到 Codalab 的 zip

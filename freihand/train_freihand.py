@@ -18,15 +18,6 @@ FastMETRO - FreiHAND Hand Mesh Training Script (Minimal Viable Version)
     --per_gpu_train_batch_size 32 \
     --per_gpu_eval_batch_size 32 \
     --lr 1e-4
-
-运行示例 (4卡 DDP):
-  python -m torch.distributed.launch --nproc_per_node=4 train_freihand.py \
-    --data_root ./data/FreiHAND \
-    --mano_dir ./models/mano \
-    --output_dir ./output/freihand \
-    --arch hrnet-w64 \
-    --model_name FastMETRO-L \
-    --num_train_epochs 200
 """
 
 from __future__ import absolute_import, division, print_function
