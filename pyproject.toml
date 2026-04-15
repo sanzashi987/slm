@@ -12,6 +12,11 @@ dependencies = [
     "tiktoken>=0.12.0",
     "torch>=2.11.0",
     "transformers[torch]>=5.5.0",
+    "torchvision>=0.11.0",
+    "numpy>=1.21.0",
+    "Pillow>=8.0.0",
+    "opencv-python>=4.5.0",
+    "tqdm>=4.62.0",
 ]
 
 [tool.uv.sources]

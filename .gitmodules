@@ -1,0 +1,3 @@
+[submodule "freihand/manopth"]
+	path = freihand/manopth
+	url = git@github.com:hassony2/manopth.git
