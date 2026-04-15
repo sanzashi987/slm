@@ -420,7 +420,7 @@ class DataLoaderLite:
 
         self.token_length = len(self.tokens)
         print(f"loaded {self.token_length} tokens")
-        print(f"1 epoch  = {self.tokens // (B *T)} batches")
+        print(f"1 epoch  = {(len(self.tokens) // (B *T))} batches")
         self.current_position = 0
 
     def next_batch(self):
@@ -526,5 +526,5 @@ for step in range(50):
     tokens_processed = train_loader.B * train_loader.T * grad_accum_steps
     tokens_per_sec = tokens_processed / (t1 - t0)
     print(
-        f"step={step:4d} | loss={loss_accum.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
+        f"step{step:4d} | loss={loss_accum.item():.6f} | norm={norm:.4f} | dt={dt:.2f}ms | tok/sec={tokens_per_sec:.2f}"
     )
