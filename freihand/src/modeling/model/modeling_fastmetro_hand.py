@@ -11,6 +11,8 @@ import torch
 import numpy as np
 from torch import nn
 
+from freihand.src.modeling.mano_utils import Mesh
+
 from .transformer import build_transformer
 from .position_encoding import build_position_encoding
 
@@ -18,7 +20,7 @@ from .position_encoding import build_position_encoding
 class FastMETRO_Hand_Network(nn.Module):
     """FastMETRO for 3D hand mesh reconstruction from a single RGB image."""
 
-    def __init__(self, args, backbone, mesh_sampler, num_joints=21, num_vertices=195):
+    def __init__(self, args, backbone, mesh_sampler:Mesh, num_joints=21, num_vertices=195):
         super().__init__()
         self.args = args
         self.backbone = backbone
