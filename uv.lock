@@ -141,6 +141,15 @@ wheels = [
 ]
 
 [[package]]
+name = "chumpy"
+version = "0.67.5"
+source = { git = "https://github.com/hassony2/chumpy.git#c0118792626e7e18f485b115983e3f87f287517a" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+
+[[package]]
 name = "click"
 version = "8.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -679,8 +688,10 @@ name = "llm"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "chumpy" },
     { name = "graphviz" },
     { name = "ipykernel" },
+    { name = "manopth" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pillow" },
@@ -694,8 +705,10 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "chumpy", git = "https://github.com/hassony2/chumpy.git" },
     { name = "graphviz", specifier = ">=0.21" },
     { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "manopth", git = "https://github.com/hassony2/manopth.git?rev=4f1dcad1201ff1bfca6e065a85f0e3456e1aa32b" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=1.23,<2.0" },
     { name = "pillow", specifier = ">=9.0" },
@@ -706,6 +719,11 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.64.0" },
     { name = "transformers", extras = ["torch"], specifier = ">=5.5.0" },
 ]
+
+[[package]]
+name = "manopth"
+version = "0.0.1"
+source = { git = "https://github.com/hassony2/manopth.git?rev=4f1dcad1201ff1bfca6e065a85f0e3456e1aa32b#4f1dcad1201ff1bfca6e065a85f0e3456e1aa32b" }
 
 [[package]]
 name = "markdown-it-py"

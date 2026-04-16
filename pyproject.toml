@@ -16,6 +16,8 @@ dependencies = [
     "Pillow>=9.0",
     "tqdm>=4.64.0",
     "scipy>=1.10",
+    "chumpy",
+    "manopth",
 ]
 
 [[tool.uv.index]]
@@ -26,4 +28,6 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 torchvision = { index = "pytorch-cu128" }
+chumpy = { git = "https://github.com/hassony2/chumpy.git" }
+manopth = { git = "https://github.com/hassony2/manopth.git", rev = "4f1dcad1201ff1bfca6e065a85f0e3456e1aa32b" }
 
