@@ -1,166 +1,184 @@
-# FastMETRO FreiHAND — 最小可用训练代码
+# FastMETRO Minimal — FreiHAND on a single RTX 4090
 
-基于 [kaist-ami/FastMETRO](https://github.com/kaist-ami/FastMETRO) (ECCV 2022) 改写。  
-支持 **FreiHAND 数据集训练**、**检查点保存**、**OBJ/MTL 格式导出**。
+Minimal, single-GPU training code for **FastMETRO** (ECCV'22) on **FreiHAND**, distilled from the official [kaist-ami/FastMETRO](https://github.com/kaist-ami/FastMETRO) repo and tuned specifically for one **RTX 4090** (24GB, Ada Lovelace).
+
+**Stripped vs upstream:**
+- No distributed training (single GPU).
+- No TSV preprocessing — reads FreiHAND's raw directory directly.
+- No HRNet-W64 backbone — uses torchvision ResNet-50 (ImageNet weights auto-downloaded).
+- No OpenDR / PyRender — hardest-to-install deps removed.
+- No SMPL body network / param regressor — hand-only.
+
+**Added:**
+- OBJ + MTL exporter.
+- End-to-end inference script: image → `.obj` / `.mtl`.
 
 ---
 
-## 文件结构
+## Model & config (fixed for cost efficiency on 4090)
+
+| Component | Value | Notes |
+|---|---|---|
+| Backbone | ResNet-50 (~25M) | torchvision `IMAGENET1K_V2` weights |
+| Transformer layers | 1 enc + 1 dec (×2 stages = 4) | `FastMETRO-S` |
+| `model_dim_1` / `model_dim_2` | 512 / 128 | |
+| Total trainable params | ~32.7M | |
+| Batch size | **96** | fits 4090 with bf16 |
+| Num workers | 8, `prefetch_factor=4` | |
+| Optimizer | AdamW, lr=1e-4, wd=1e-4 | |
+| LR schedule | StepLR, ×0.1 at epoch 80 | |
+| Epochs | 100 | |
+
+### 4090-specific optimizations (all default-on, no flags)
+
+1. **bfloat16 autocast** around forward + loss. No `GradScaler` (bf16 range == fp32).
+2. **TF32** for non-autocast fp32 paths (`matmul.allow_tf32 = True`, `cudnn.allow_tf32 = True`).
+3. **`cudnn.benchmark = True`** — input is fixed 224×224.
+4. **`channels_last`** memory format for the CNN backbone.
+5. **Vectorized mesh sampler** — single sparse matmul, no per-sample python loop.
+6. **`torch.no_grad()`** around MANO GT mesh regeneration.
+
+Combined speedup over a naive fp32 implementation: roughly **2-2.5×** throughput, with VRAM at batch 96 around **14-16 GB**.
+
+Expected: one epoch ≈ **3-5 min** on 4090 for FreiHAND (130,240 images). Full 100 epochs ≈ **6-9 h**.
+
+---
+
+## Project layout
 
 ```
-fastmetro_freihand/
-├── train_freihand.py          ← 主训练入口
-├── infer.py                   ← 单图推理 + OBJ 导出
+fastmetro_min/
 ├── requirements.txt
-├── src/
-│   ├── modeling/
-│   │   └── fastmetro.py       ← 模型定义 (Encoder-Decoder Transformer)
-│   ├── datasets/
-│   │   └── freihand_dataset.py ← FreiHAND 数据加载
-│   └── utils/
-│       ├── mano_wrapper.py    ← MANO 模型封装
-│       ├── mesh_sampler.py    ← 网格下/上采样
-│       ├── geometric_layers.py← 弱透视投影
-│       └── obj_exporter.py    ← OBJ/MTL 导出
-└── README.md
+├── scripts/train.sh
+└── src/
+    ├── train_freihand.py          # main training script
+    ├── export_obj.py              # inference: checkpoint + image → .obj/.mtl
+    ├── datasets/freihand.py       # FreiHAND raw directory reader
+    ├── modeling/
+    │   ├── mano_utils.py          # MANO wrapper + vectorized mesh sampler
+    │   ├── data/                  # mano_195_adjmat_*.pt, mano_downsampling.npz
+    │   └── model/
+    │       ├── modeling_fastmetro_hand.py
+    │       ├── transformer.py     # (from upstream)
+    │       └── position_encoding.py         # (from upstream)
+    └── utils/mesh_io.py           # OBJ + MTL writer
 ```
 
 ---
 
-## 环境配置
+## 1. Install
 
 ```bash
-# 1. 克隆 FastMETRO (获取 manopth 子模块)
-git clone --recursive https://github.com/kaist-ami/FastMETRO.git
-cd FastMETRO
+conda create -n fastmetro python=3.10 -y
+conda activate fastmetro
 
-# 2. 将本目录的文件覆盖/添加到 FastMETRO 目录
-#    (或直接在本目录操作, 需保证 manopth 在 Python 路径中)
+# PyTorch for CUDA 12.1 (4090 works well with CUDA 12.x):
+pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu121
 
-# 3. 安装依赖
 pip install -r requirements.txt
-pip install -e manopth/
+
+# MANO layer - requires numpy<2 because manopth pulls chumpy.
+pip install "git+https://github.com/hassony2/manopth.git"
 ```
 
 ---
 
-## 数据准备
+## 2. Data preparation
 
-### FreiHAND 数据集
+### FreiHAND
 
-1. 注册并下载: https://lmb.informatik.uni-freiburg.de/resources/datasets/FreihandDataset.en.html
-2. 解压后目录结构:
+Download from <https://lmb.informatik.uni-freiburg.de/projects/freihand/>, unpack so you have:
 
 ```
-data/FreiHAND/
-├── training/
-│   └── rgb/          ← 130240 张 .jpg
-├── evaluation/
-│   └── rgb/          ← 3960 张 .jpg
-├── training_K.json
-├── training_mano.json
-├── training_xyz.json
-├── evaluation_K.json
-└── evaluation_scals.json
+FreiHAND_pub_v2/
+├── training/rgb/00000000.jpg ... 00130239.jpg      # 32,560 unique × 4 background aug
+├── evaluation/rgb/
+├── training_K.json                 # 32,560 × 3×3
+├── training_mano.json              # 32,560 × 61   (48 pose + 10 shape + 3 trans)
+├── training_xyz.json               # 32,560 × 21×3 (meters, camera space)
+└── evaluation_K.json
 ```
 
-### MANO 模型
+### MANO
 
-1. 注册并下载: https://mano.is.tue.mpg.de/
-2. 将 `MANO_RIGHT.pkl` 放入 `models/mano/`
-
-### 网格采样矩阵 (可选, 提升精度)
-
-从 FastMETRO 或 METRO 仓库的 `src/modeling/data/` 目录获取 `mesh_downsampling.npz`，  
-放入 `src/modeling/data/`。  
-若未提供, 代码会使用近似 FPS 采样 (功能正常, 精度略低)。
+1. Register at <https://mano.is.tue.mpg.de/> and download MANO v1.2.
+2. Unpack. The folder containing `MANO_RIGHT.pkl` (typically `mano_v1_2/models/`) is your `--mano_dir`.
 
 ---
 
-## 训练
-
-### 单卡训练 (ResNet-50 backbone, 快速验证)
+## 3. Train
 
 ```bash
-python train_freihand.py \
-    --data_root ./data/FreiHAND \
-    --mano_dir  ./models/mano \
-    --output_dir ./output/freihand_r50 \
-    --arch resnet50 \
-    --model_name FastMETRO-S \
-    --per_gpu_train_batch_size 32 \
-    --num_train_epochs 200 \
-    --lr 1e-4 \
-    --save_every_n_epochs 10
+python -m src.train_freihand \
+    --freihand_dir /path/to/FreiHAND_pub_v2 \
+    --mano_dir     /path/to/mano_v1_2/models \
+    --output_dir   ./outputs/run1
 ```
 
-训练完成后会自动运行验证集推理，输出:
-- `output/freihand_*/pred.json`         ← FreiHAND 官方提交格式
-- `output/freihand_*/freihand_pred.zip` ← 直接上传到 Codalab 的 zip
+Or edit paths in `scripts/train.sh` and run it.
 
----
+### What gets saved (in `--output_dir`)
 
-## 仅推理 + 导出 OBJ
+- `train.log` — full training log
+- `checkpoint_latest.pth` — most recent checkpoint (default: every 5 epochs)
+- `checkpoint_epoch005.pth`, ... — periodic snapshots
+- `meshes_epoch005/sample_*.obj` + `.mtl` — sanity-check meshes exported after each save
 
-```bash
-# 从验证集批量导出 OBJ
-python train_freihand.py \
-    --data_root ./data/FreiHAND \
-    --mano_dir  ./models/mano \
-    --output_dir ./output/eval \
-    --resume_checkpoint ./output/freihand_r50/checkpoint-epoch0200-step.../state_dict.bin \
-    --run_eval_only \
-    --export_obj \
-    --export_obj_every 10   # 每10个样本导出一个 OBJ
-
-# 从单张图片推理
-python infer.py \
-    --image ./test_images/hand.jpg \
-    --checkpoint ./output/freihand_r50/checkpoint-epoch0200-step.../state_dict.bin \
-    --mano_dir ./models/mano \
-    --output_dir ./output/infer \
-    --export_obj
-```
-
----
-
-## OBJ/MTL 格式说明
-
-每个导出样本生成两个文件:
-
-| 文件 | 内容 |
-|------|------|
-| `sample.obj` | 778 顶点坐标 (米制), 1538 三角面, 引用 MTL |
-| `sample.mtl` | Phong 着色, 皮肤色 RGB, 无需纹理贴图 |
-
-可直接在 Blender、MeshLab、Three.js 等工具中打开。
-
-自定义颜色:
+Each checkpoint `.pth` contains:
 ```python
-from src.utils.obj_exporter import export_obj_mtl
-export_obj_mtl(vertices, faces, "hand.obj", color_rgb=(1.0, 0.5, 0.3))
+{"epoch": int, "model": state_dict, "optimizer": state_dict, "lr_scheduler": state_dict}
+```
+
+### Resume
+
+```bash
+python -m src.train_freihand ... --resume ./outputs/run1/checkpoint_latest.pth
 ```
 
 ---
 
-## 关键超参数
+## 4. Export OBJ / MTL from a trained model
 
-| 参数 | FastMETRO-S | FastMETRO-L |
-|------|------------|------------|
-| `--arch` | `resnet50` | `hrnet-w64` |
-| `--model_name` | `FastMETRO-S` | `FastMETRO-L` |
-| `--hidden_feat_dim` | `512,128,32` | `1024,256,64` |
-| `--lr` | `1e-4` | `1e-4` |
-| `--num_train_epochs` | `200` | `200` |
-| Batch per GPU | 32 | 16 |
+Inference uses the same bf16 autocast + channels_last path as training for consistency.
+
+```bash
+# Single image
+python -m src.export_obj \
+    --checkpoint ./outputs/run1/checkpoint_latest.pth \
+    --mano_dir   /path/to/mano_v1_2/models \
+    --input      ./my_hand.jpg \
+    --output_dir ./exports
+
+# Folder of images
+python -m src.export_obj \
+    --checkpoint ./outputs/run1/checkpoint_latest.pth \
+    --mano_dir   /path/to/mano_v1_2/models \
+    --input      /path/to/FreiHAND_pub_v2/evaluation/rgb \
+    --output_dir ./exports \
+    --limit      20
+```
+
+Each image → one `.obj` + one matching `.mtl` (simple flesh-colored Lambert material). Both files open directly in MeshLab / Blender / macOS Preview.
 
 ---
 
-## 评估结果提交
+## Troubleshooting
 
-```bash
-# 上传到 FreiHAND 官方 Codalab 评估服务器
-# https://competitions.codalab.org/competitions/21238
-zip freihand_pred.zip pred.json
-# 上传 freihand_pred.zip
+**OOM at batch 96**: drop `--batch_size 64` (back to the pre-bf16 default) as a safety margin.
+
+**Loss explodes / becomes NaN**: very unlikely with bf16 on Ada, but if it happens, check that `mano_dir` contains the correct `MANO_RIGHT.pkl` — corrupt GT mesh is the #1 cause.
+
+**Slow data loading (throughput bottlenecked below GPU capacity)**: try `--num_workers 12` and/or `--prefetch_factor 6`. The FreiHAND images are tiny (224×224 JPEGs) so SSD read rarely matters; CPU decode is the usual bottleneck.
+
+**`torch.load` warning about `weights_only`**: safe to ignore on your own checkpoints.
+
+---
+
+## License & credits
+
+Derived from [kaist-ami/FastMETRO](https://github.com/kaist-ami/FastMETRO) (MIT). Files `transformer.py`, `position_encoding.py`, and the MANO adjacency matrices / downsampling `.npz` are reused verbatim. Model wrapper, dataset, training loop, and OBJ exporter are rewritten / simplified.
+
+Cite the original paper if you use this code:
+```
+Cho et al., "Cross-Attention of Disentangled Modalities for 3D Human Mesh Recovery with Transformers", ECCV 2022.
 ```

@@ -1,0 +1,12 @@
+# Core
+# Install PyTorch first matching your CUDA (see https://pytorch.org/).
+# For a 4090 on CUDA 12.1 use e.g.:
+#   pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu121
+numpy>=1.23,<2.0
+scipy>=1.10
+Pillow>=9.0
+tqdm>=4.64
+
+# MANO layer (pure-Python)
+# Install from GitHub: pip install "git+https://github.com/hassony2/manopth.git"
+# manopth depends on `chumpy`, which needs NumPy <2, hence the constraint above.

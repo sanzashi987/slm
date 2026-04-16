@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Minimal FastMETRO FreiHAND training launcher (RTX 4090).
+# All defaults in train_freihand.py are tuned for this setup. Edit the 3 paths below.
+
+set -e
+
+FREIHAND_DIR="/path/to/FreiHAND_pub_v2"
+MANO_DIR="/path/to/mano_v1_2/models"
+OUTPUT_DIR="./outputs/run1"
+
+python -m src.train_freihand \
+    --freihand_dir "$FREIHAND_DIR" \
+    --mano_dir     "$MANO_DIR" \
+    --output_dir   "$OUTPUT_DIR"
