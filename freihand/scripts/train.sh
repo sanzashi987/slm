@@ -4,8 +4,8 @@
 
 set -e
 
-FREIHAND_DIR="/path/to/FreiHAND_pub_v2"
-MANO_DIR="/path/to/mano_v1_2/models"
+FREIHAND_DIR="./dataset/FreiHAND"
+MANO_DIR="./models"
 OUTPUT_DIR="./outputs/run1"
 
 python -m src.train_freihand \

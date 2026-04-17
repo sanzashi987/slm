@@ -3,7 +3,22 @@
     "allow": [
       "Bash(E:/code/llm/CLAUDE.md:*)",
       "Bash(python -c \"import sys, json; nb = json.load\\(sys.stdin\\); print\\(f''''Total cells: {len\\(nb[\"\"cells\"\"]\\)}''''\\); [print\\(f''''Cell {i}: {c[\"\"source\"\"][0][:80] if c[\"\"source\"\"] else \"\"empty\"\"}...''''\\) for i, c in enumerate\\(nb[''''cells''''][:10]\\)]\")",
-      "Bash(ls *.py)"
+      "Bash(ls *.py)",
+      "Bash(python -c ' *)",
+      "Bash(python'\\) print\\(src\\) print\\(')",
+      "Bash(python -c \" import sys, json nb = json.load\\(sys.stdin\\) for cell in nb['cells']: if cell['cell_type'] == 'code': src = ''.join\\(cell['source']\\) if 'Bigram' in src or 'class' in src.lower\\(\\): print\\('```python'\\) print\\(src\\) print\\('```'\\) print\\('---'\\) \")",
+      "Bash(python'\\) print\\(src[:2000]\\) print\\(')",
+      "Bash(python -c \" import sys, json nb = json.load\\(sys.stdin\\) for cell in nb['cells']: if cell['cell_type'] == 'code': src = ''.join\\(cell['source']\\) if 'Attention' in src or 'attention' in src: print\\('```python'\\) print\\(src[:2000]\\) print\\('```'\\) print\\('---'\\) \")",
+      "Bash(python3 -c \"import sys,json; nb=json.load\\(sys.stdin\\); [print\\(''.join\\(c['source']\\)\\) for c in nb['cells'] if c['cell_type']=='code' and \\('Bigram' in ''.join\\(c['source']\\) or 'train' in ''.join\\(c['source']\\)\\)]\")",
+      "Bash(python3 -c \"import sys,json; nb=json.load\\(sys.stdin\\); cells=[c for c in nb['cells'] if c['cell_type']=='code']; [print\\('---CELL---'\\); print\\(''.join\\(c['source']\\)\\) for c in cells]\")",
+      "Bash(python3 *)",
+      "Bash(git -C \"E:/code/llm\" show 851c071:gpt-dev.ipynb)",
+      "Bash(git -C \"E:/code/llm\" show 4fc3e42:gpt-dev.ipynb)",
+      "Bash(git -C \"E:/code/llm\" show b0dcdb1:gpt-dev.ipynb)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python -c \"print\\('hello'\\)\")",
+      "Bash(E:/code/llm/.venv/Scripts/python.exe *)",
+      "Bash(git *)"
     ]
   }
 }

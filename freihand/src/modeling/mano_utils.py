@@ -59,14 +59,18 @@ class _SparseMM(torch.autograd.Function):
     def forward(ctx, sparse, dense):
         ctx.req_grad = dense.requires_grad
         ctx.save_for_backward(sparse)
-        return torch.matmul(sparse, dense)
+        with torch.autocast(device_type="cuda", enabled=False):
+            result = torch.sparse.mm(sparse, dense.float())
+        return result.to(dense.dtype)
 
     @staticmethod
     def backward(ctx, grad_output):
         grad_input = None
         (sparse,) = ctx.saved_tensors
         if ctx.req_grad:
-            grad_input = torch.matmul(sparse.t(), grad_output)
+            with torch.autocast(device_type="cuda", enabled=False):
+                grad_input = torch.sparse.mm(sparse.t(), grad_output.float())
+            grad_input = grad_input.to(grad_output.dtype)
         return None, grad_input
 
 
@@ -95,8 +99,10 @@ class Mesh(object):
     def __init__(self, sampling_npz_path, num_downsampling=1, device=torch.device("cuda")):
         data = np.load(sampling_npz_path, encoding="latin1", allow_pickle=True)
         U, D = _scipy_to_pytorch(data["A"], data["U"], data["D"])
-        self._U = [u.to(device) for u in U]
-        self._D = [d.to(device) for d in D]
+        # self._U = [u.to(device) for u in U]
+        # self._D = [d.to(device) for d in D]
+        self._U = [u.to(device=device, dtype=torch.float32) for u in U]
+        self._D = [d.to(device=device, dtype=torch.float32) for d in D]
         self.num_downsampling = num_downsampling
 
     @staticmethod

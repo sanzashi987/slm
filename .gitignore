@@ -3,3 +3,5 @@ dataset
 freihand/dataset
 freihand/models
 .venv
+__pycache__
+outputs

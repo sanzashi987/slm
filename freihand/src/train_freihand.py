@@ -225,7 +225,7 @@ def train_one_epoch(args, model:FastMETRO_Hand_Network, mano_model:MANO, mesh_sa
 
             l_j3d = keypoint_3d_loss(pred_joints_tok, gt_joints) + keypoint_3d_loss(pred_joints_mano, gt_joints)
             l_v3d = (args.w_v_coarse * vertices_loss(pred_v_coarse, gt_vertices_coarse)
-                     + args.w_v_fine * vertices_loss(pred_v_fine, gt_vertices_fine))
+                        + args.w_v_fine * vertices_loss(pred_v_fine, gt_vertices_fine))
             l_edge = edge_loss_fn(pred_v_fine, gt_vertices_fine)
             l_norm = normal_loss_fn(pred_v_fine, gt_vertices_fine)
             l_j2d = keypoint_2d_loss(pred_2d_tok, gt_joints_2d) + keypoint_2d_loss(pred_2d_mano, gt_joints_2d)

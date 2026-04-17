@@ -43,7 +43,7 @@ def build_resnet50_backbone():
     return nn.Sequential(*list(m.children())[:-2])
 
 
-def make_args_namespace(model_name="FastMETRO-S", model_data_dir="src/modeling/data"):
+def make_args_namespace(model_name="FastMETRO-S", model_data_dir="./src/modeling/data"):
     """Reconstruct the minimal namespace needed by FastMETRO_Hand_Network."""
     ns = argparse.Namespace(
         model_name=model_name,
