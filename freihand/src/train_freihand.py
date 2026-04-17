@@ -176,7 +176,7 @@ def export_sample_objs(model, mano_model, dataset, device, out_dir, num_samples=
 
 # -------------------- training --------------------
 
-def train_one_epoch(args, model, mano_model:MANO, mesh_sampler:Mesh, loader, optimizer, logger, epoch):
+def train_one_epoch(args, model:FastMETRO_Hand_Network, mano_model:MANO, mesh_sampler:Mesh, loader, optimizer, logger, epoch):
     model.train()
     meters = {k: AvgMeter() for k in ["loss", "l_j3d", "l_v3d", "l_edge", "l_norm", "l_j2d"]}
 
