@@ -372,7 +372,7 @@ def main():
         [p for p in model.parameters() if p.requires_grad],
         lr=args.lr, weight_decay=args.weight_decay,
     )
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_drop_epochs, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_drop_epochs, gamma=0.01)
 
     start_epoch = 0
     if args.resume and op.isfile(args.resume):
@@ -383,6 +383,12 @@ def main():
         if ckpt.get("lr_scheduler") is not None:
             lr_scheduler.load_state_dict(ckpt["lr_scheduler"])
         start_epoch = ckpt["epoch"] + 1
+
+    # resume from 100 checkpoint
+    lr_scheduler.gamma = 0.01
+    for group in optimizer.param_groups:
+        group["lr"] = 1e-6  # 直接写目标 lr
+
 
     logger.info("Starting training (bf16 autocast, TF32, cudnn.benchmark, channels_last)...")
     for epoch in range(start_epoch, args.epochs):

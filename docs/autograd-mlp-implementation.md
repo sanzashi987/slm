@@ -242,7 +242,52 @@ def tanh(self):
     return out
 ```
 
-### 3.5 扩展运算符——复用已有的反向传播
+### 3.5 Cross-Entropy：分类任务的损失函数
+
+tanh 输出的是 $(-1, 1)$ 的连续值，适合回归任务（如本文第 5 章的 MLP 预测 ±1）。但在多分类任务（如 GPT 预测下一个 token）中，网络的最终输出是一个未归一化的得分向量（logits），需要一个配套的损失函数——Cross-Entropy。
+
+**从 Softmax 到概率分布**
+
+给定 $C$ 个类别的 logits $z_1, z_2, \ldots, z_C$，Softmax 将其转为概率分布：
+
+$$p_i = \frac{e^{z_i}}{\sum_{j=1}^{C} e^{z_j}}$$
+
+每个 $p_i \in (0, 1)$ 且 $\sum p_i = 1$，可解释为模型对"输入属于第 $i$ 类"的置信度。
+
+**Cross-Entropy 的定义**
+
+设真实类别为 $y$（one-hot），模型预测概率为 $p$：
+
+$$\mathcal{L}_{\text{CE}} = -\sum_{i=1}^{C} y_i \log p_i = -\log p_y$$
+
+由于 one-hot 向量只有目标类别 $y$ 处为 1，其余为 0，损失退化为**只看目标类别的对数概率的负值**。$p_y$ 越接近 1（预测越自信且正确），$-\log p_y$ 越接近 0；$p_y$ 越小（预测错误或不自信），损失越大。
+
+**为什么不用 MSE？**
+
+对分类任务使用 MSE（$(p_y - 1)^2$）有一个严重问题：当 $p_y$ 接近 0（完全预测错误）时，MSE 的梯度 $2(p_y - 1)$ 约等于 $-2$，仍然是有限值；而 $-\log p_y$ 在 $p_y \to 0$ 时趋向无穷大，给出强烈的梯度信号，推动模型快速纠正错误。
+
+**梯度推导**
+
+将 Softmax + Cross-Entropy 合并推导（避免数值不稳定），损失对 logits 的梯度极其简洁：
+
+$$\frac{\partial \mathcal{L}_{\text{CE}}}{\partial z_i} = p_i - y_i$$
+
+**推导过程**：
+
+$$\mathcal{L} = -\log p_y = -z_y + \log\!\sum_j e^{z_j}$$
+
+对 $z_i$ 求偏导：
+
+$$\frac{\partial \mathcal{L}}{\partial z_i} = -\mathbf{1}[i=y] + \frac{e^{z_i}}{\sum_j e^{z_j}} = p_i - y_i$$
+
+> **这个梯度的直觉**
+> 对目标类别 $i = y$：梯度为 $p_y - 1$，当 $p_y$ 很小时梯度接近 $-1$，推动 $z_y$ 增大。
+> 对非目标类别 $i \neq y$：梯度为 $p_i$，当 $p_i$ 很大时（错误地给非目标类高分）梯度接近 $+1$，推动 $z_i$ 减小。
+> 整体效果：把概率质量从错误类别转移到正确类别。
+
+在 PyTorch 中，`F.cross_entropy(logits, target)` 内部已将 Softmax 和 Cross-Entropy 合并计算（LogSoftmax + NLLLoss），避免了先显式计算 Softmax 再取 log 带来的数值精度问题。
+
+### 3.6 扩展运算符——复用已有的反向传播
 
 完整的 `Value` 类还支持幂运算、除法、减法、取负。关键洞察是这些运算可以通过已有运算组合而来，**无需单独实现反向传播**：
 

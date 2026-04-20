@@ -11,4 +11,6 @@ OUTPUT_DIR="./outputs/run1"
 python -m src.train_freihand \
     --freihand_dir "$FREIHAND_DIR" \
     --mano_dir     "$MANO_DIR" \
+    --resume       ./outputs/run1/checkpoint_latest.pth \
+    --epochs       120 \
     --output_dir   "$OUTPUT_DIR"
