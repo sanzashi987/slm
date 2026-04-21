@@ -83,7 +83,7 @@ def main():
     ap.add_argument("--output_dir", type=str, default="./exports")
     ap.add_argument("--model_name", type=str, default="FastMETRO-S",
                     choices=["FastMETRO-S", "FastMETRO-M", "FastMETRO-L"])
-    ap.add_argument("--model_data_dir", type=str, default="src/modeling/data")
+    ap.add_argument("--model_data_dir", type=str, default="./src/modeling/data")
     ap.add_argument("--limit", type=int, default=0, help="Max images to process (0 = all).")
     args = ap.parse_args()
 
