@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass
 import torch.nn as nn
 import torch
@@ -336,9 +337,9 @@ def detect_device():
     if torch.cuda.is_available():
         torch.cuda.manual_seed(1337)
         device = "cuda"
-    elif hasattr(torch.backends, "mps") and torch.mps.is_available():
-        torch.mps.manual_seed(1337)
-        device = "mps"
+    # elif hasattr(torch.backends, "mps") and torch.mps.is_available():
+    #     torch.mps.manual_seed(1337)
+    #     device = "mps"
     return device
 
 
@@ -359,15 +360,53 @@ max_length = 39
 # from transformers import pipeline, set_seed
 
 # generator = pipeline("text-generation", model="gpt2")
-# set_seed(42)
-# generator(
-#     "Hello, I'm a language model,",
-#     max_length=max_length,
+# set_seed(44)
+
+# x = generator(
+#     # "Hello, I'm a language model,",
+#     "Hello, who are you?",
+#     max_new_tokens=max_length,
 #     num_return_sequences=num_return_sequences,
 # )
+# print("\n")
+
+# for ele in x:
+#     print(">", ele["generated_text"])
+#     print("\n")
 
 
-# model = GPT.from_pretrained("gpt2")
+# sys.exit()
+
+import tiktoken
+
+model = GPT.from_pretrained("gpt2")
+enc = tiktoken.get_encoding("gpt2")
+# tokens = enc.encode("你好, 你是谁")
+tokens = enc.encode("Hello, who are you? ")
+tokens = torch.tensor(tokens, dtype=torch.long)  # (8)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)  # (5,8)
+x = tokens.to(device)
+torch.manual_seed(44)
+while x.size(1) < max_length:
+    with torch.no_grad():
+        logits, _ = model(x)
+        logits = logits[:, -1, :]
+        probs = F.softmax(logits, dim=-1)
+        topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+        ix = torch.multinomial(topk_probs, 1)
+        xcol = torch.gather(topk_indices, -1, ix)
+        x = torch.cat([x, xcol], dim=1)
+
+print("\n")
+
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
+    print("\n")
+
+sys.exit()
+
 
 # given a number that can be N power of 2 instead of a odd number /prime number  50257
 # 对齐到128的倍数, 在GPU中更容易分片
@@ -382,15 +421,6 @@ model.to(device)  # model to device will mutate the instance itself
 # Triton是torch.compile的依赖，用来在GPU上生成优化的kernel。
 # 但是windows 支持很差, 考虑再 Linux 或者 wsl 上运行
 # model = torch.compile(model)
-
-#
-import tiktoken
-
-enc = tiktoken.get_encoding("gpt2")
-tokens = enc.encode("Hello, I'm a language model,")
-tokens = torch.tensor(tokens, dtype=torch.long)  # (8)
-tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)  # (5,8)
-x = tokens.to(device)
 
 
 # def create_samples(B: int = 4, T: int = 32):
